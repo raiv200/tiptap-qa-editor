@@ -19,7 +19,7 @@ body {
 /* TipTap Editor Styles */
 .ProseMirror {
   min-height: 200px;
-  padding: 1rem;
+  /* padding: 1rem; */
   outline: none;
 }
 
@@ -135,11 +135,12 @@ body {
    ============================================ */
 
 /* Table Editor Container - Make it scrollable */
-.table-editor-content .ProseMirror {
-  min-height: 250px;
-  padding: 1rem;
-  padding-left: 2rem; /* Space for row handles */
-  padding-bottom: 3rem; /* Space for add row button */
+.table-editor-content {
+  /* min-height: 250px; */
+  padding: 1rem ;
+  padding-left: 2rem;
+  padding-bottom: 3rem;
+  padding-right: 2rem; 
   outline: none;
   position: relative;
   overflow-x: auto; /* Enable horizontal scroll */
@@ -151,6 +152,7 @@ body {
   table-layout: auto; /* Auto width based on content */
   width: auto; /* NOT 100% */
   min-width: auto;
+  max-width: 400px;
   margin: 1rem 0;
   border: 1px solid #e5e7eb;
   border-radius: 0.375rem;
@@ -164,7 +166,7 @@ body {
   padding: 0.1rem 0.25rem;
   vertical-align: top;
   position: relative;
-  min-width: 120px; /* Moderate minimum width */
+  min-width: 100px; /* Moderate minimum width */
   max-width: 300px; /* Maximum width */
   box-sizing: border-box;
 }

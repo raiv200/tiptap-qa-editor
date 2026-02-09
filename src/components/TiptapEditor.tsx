@@ -3,6 +3,7 @@
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
+import { createPortal } from "react-dom";
 
 import {
   TextStyle,
@@ -152,7 +153,11 @@ const ToolbarButton = ({
 const ToolbarDivider = () => <div className="w-px h-6 bg-gray-300 mx-1" />;
 
 // Table Insert Grid
-const TableInsertGrid = ({ onInsert }: { onInsert: (rows: number, cols: number) => void }) => {
+const TableInsertGrid = ({
+  onInsert,
+}: {
+  onInsert: (rows: number, cols: number) => void;
+}) => {
   const [hoveredRow, setHoveredRow] = useState(0);
   const [hoveredCol, setHoveredCol] = useState(0);
 
@@ -161,7 +166,10 @@ const TableInsertGrid = ({ onInsert }: { onInsert: (rows: number, cols: number) 
       {/* <div className="text-xs text-gray-500 mb-2 text-center">
         {hoveredRow > 0 && hoveredCol > 0 ? `${hoveredRow} × ${hoveredCol}` : "Select size"}
       </div> */}
-      <div className="grid gap-1" style={{ gridTemplateColumns: "repeat(8, 1fr)" }}>
+      <div
+        className="grid gap-1"
+        style={{ gridTemplateColumns: "repeat(8, 1fr)" }}
+      >
         {Array.from({ length: 32 }).map((_, index) => {
           const row = Math.floor(index / 8) + 1;
           const col = (index % 8) + 1;
@@ -171,10 +179,18 @@ const TableInsertGrid = ({ onInsert }: { onInsert: (rows: number, cols: number) 
               key={index}
               type="button"
               className={`w-5 h-5 border rounded-sm ${
-                isHighlighted ? "bg-blue-500 border-blue-500" : "bg-white border-gray-300"
+                isHighlighted
+                  ? "bg-blue-500 border-blue-500"
+                  : "bg-white border-gray-300"
               }`}
-              onMouseEnter={() => { setHoveredRow(row); setHoveredCol(col); }}
-              onMouseLeave={() => { setHoveredRow(0); setHoveredCol(0); }}
+              onMouseEnter={() => {
+                setHoveredRow(row);
+                setHoveredCol(col);
+              }}
+              onMouseLeave={() => {
+                setHoveredRow(0);
+                setHoveredCol(0);
+              }}
               onClick={() => onInsert(row, col)}
             />
           );
@@ -184,9 +200,20 @@ const TableInsertGrid = ({ onInsert }: { onInsert: (rows: number, cols: number) 
   );
 };
 
-// Row Context Menu
-const RowContextMenu = ({ editor, position, onClose }: { editor: any; position: { x: number; y: number }; onClose: () => void }) => {
+
+
+// Row Context Menu - Position aware (opens up if no space below)
+const RowContextMenu = ({
+  editor,
+  position,
+  onClose,
+}: {
+  editor: any;
+  position: { x: number; y: number };
+  onClose: () => void;
+}) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [adjustedPosition, setAdjustedPosition] = useState(position);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -203,35 +230,102 @@ const RowContextMenu = ({ editor, position, onClose }: { editor: any; position: 
     };
   }, [onClose]);
 
-  const handleAction = (action: () => void) => { action(); onClose(); };
+  // Adjust position to keep menu in viewport
+  useEffect(() => {
+    if (!menuRef.current) return;
+
+    const menu = menuRef.current;
+    const menuRect = menu.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+
+    let newX = position.x;
+    let newY = position.y;
+
+    // Check if menu goes below viewport
+    if (position.y + menuRect.height > viewportHeight - 10) {
+      // Open upward instead
+      newY = position.y - menuRect.height;
+    }
+
+    // Check if menu goes beyond right edge
+    if (position.x + menuRect.width > viewportWidth - 10) {
+      newX = position.x - menuRect.width;
+    }
+
+    // Make sure it doesn't go above viewport
+    if (newY < 10) {
+      newY = 10;
+    }
+
+    // Make sure it doesn't go beyond left edge
+    if (newX < 10) {
+      newX = 10;
+    }
+
+    setAdjustedPosition({ x: newX, y: newY });
+  }, [position]);
+
+  const handleAction = (action: () => void) => {
+    action();
+    onClose();
+  };
 
   return (
-    <div ref={menuRef} className="fixed z-[100] bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-[180px]" style={{ left: position.x, top: position.y }}>
-      <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => handleAction(() => editor.chain().focus().toggleHeaderRow().run())}>
+    <div
+      ref={menuRef}
+      className="fixed z-[100] bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-[180px]"
+      style={{ left: adjustedPosition.x, top: adjustedPosition.y }}
+    >
+      <button
+        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+        onClick={() => handleAction(() => editor.chain().focus().toggleHeaderRow().run())}
+      >
         <PanelTop size={16} /> Header Row
       </button>
       <div className="h-px bg-gray-200 my-1" />
-      <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => handleAction(() => editor.chain().focus().addRowBefore().run())}>
+      <button
+        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+        onClick={() => handleAction(() => editor.chain().focus().addRowBefore().run())}
+      >
         <ArrowUp size={16} /> Insert Above
       </button>
-      <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => handleAction(() => editor.chain().focus().addRowAfter().run())}>
+      <button
+        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+        onClick={() => handleAction(() => editor.chain().focus().addRowAfter().run())}
+      >
         <ArrowDown size={16} /> Insert Below
       </button>
       <div className="h-px bg-gray-200 my-1" />
-      <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => handleAction(() => editor.chain().focus().addRowAfter().run())}>
+      <button
+        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+        onClick={() => handleAction(() => editor.chain().focus().addRowAfter().run())}
+      >
         <Copy size={16} /> Duplicate
       </button>
       <div className="h-px bg-gray-200 my-1" />
-      <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50" onClick={() => handleAction(() => editor.chain().focus().deleteRow().run())}>
+      <button
+        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+        onClick={() => handleAction(() => editor.chain().focus().deleteRow().run())}
+      >
         <Trash2 size={16} /> Delete Row
       </button>
     </div>
   );
 };
 
-// Column Context Menu
-const ColumnContextMenu = ({ editor, position, onClose }: { editor: any; position: { x: number; y: number }; onClose: () => void }) => {
+// Column Context Menu - Position aware (opens left if no space on right)
+const ColumnContextMenu = ({
+  editor,
+  position,
+  onClose,
+}: {
+  editor: any;
+  position: { x: number; y: number };
+  onClose: () => void;
+}) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [adjustedPosition, setAdjustedPosition] = useState(position);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -248,26 +342,83 @@ const ColumnContextMenu = ({ editor, position, onClose }: { editor: any; positio
     };
   }, [onClose]);
 
-  const handleAction = (action: () => void) => { action(); onClose(); };
+  // Adjust position to keep menu in viewport
+  useEffect(() => {
+    if (!menuRef.current) return;
+
+    const menu = menuRef.current;
+    const menuRect = menu.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+
+    let newX = position.x;
+    let newY = position.y;
+
+    // Check if menu goes below viewport
+    if (position.y + menuRect.height > viewportHeight - 10) {
+      newY = position.y - menuRect.height;
+    }
+
+    // Check if menu goes beyond right edge
+    if (position.x + menuRect.width > viewportWidth - 10) {
+      newX = position.x - menuRect.width;
+    }
+
+    // Make sure it doesn't go above viewport
+    if (newY < 10) {
+      newY = 10;
+    }
+
+    // Make sure it doesn't go beyond left edge
+    if (newX < 10) {
+      newX = 10;
+    }
+
+    setAdjustedPosition({ x: newX, y: newY });
+  }, [position]);
+
+  const handleAction = (action: () => void) => {
+    action();
+    onClose();
+  };
 
   return (
-    <div ref={menuRef} className="fixed z-[100] bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-[180px]" style={{ left: position.x, top: position.y }}>
-      <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => handleAction(() => editor.chain().focus().toggleHeaderColumn().run())}>
+    <div
+      ref={menuRef}
+      className="fixed z-[100] bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-[180px]"
+      style={{ left: adjustedPosition.x, top: adjustedPosition.y }}
+    >
+      <button
+        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+        onClick={() => handleAction(() => editor.chain().focus().toggleHeaderColumn().run())}
+      >
         <PanelLeft size={16} /> Header Column
       </button>
       <div className="h-px bg-gray-200 my-1" />
-      <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => handleAction(() => editor.chain().focus().addColumnBefore().run())}>
+      <button
+        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+        onClick={() => handleAction(() => editor.chain().focus().addColumnBefore().run())}
+      >
         <ArrowLeft size={16} /> Insert Left
       </button>
-      <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => handleAction(() => editor.chain().focus().addColumnAfter().run())}>
+      <button
+        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+        onClick={() => handleAction(() => editor.chain().focus().addColumnAfter().run())}
+      >
         <ArrowRight size={16} /> Insert Right
       </button>
       <div className="h-px bg-gray-200 my-1" />
-      <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => handleAction(() => editor.chain().focus().addColumnAfter().run())}>
+      <button
+        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+        onClick={() => handleAction(() => editor.chain().focus().addColumnAfter().run())}
+      >
         <Copy size={16} /> Duplicate
       </button>
       <div className="h-px bg-gray-200 my-1" />
-      <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50" onClick={() => handleAction(() => editor.chain().focus().deleteColumn().run())}>
+      <button
+        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+        onClick={() => handleAction(() => editor.chain().focus().deleteColumn().run())}
+      >
         <Trash2 size={16} /> Delete Column
       </button>
     </div>
@@ -351,7 +502,7 @@ export default function TiptapEditor({
     },
     editorProps: {
       attributes: {
-        class: "prose prose-sm max-w-none focus:outline-none min-h-[200px] p-4",
+        class: "prose prose-sm max-w-none focus:outline-none min-h-[200px]",
         spellcheck: "true",
       },
       handleKeyDown: (view, event) => {
@@ -377,7 +528,10 @@ export default function TiptapEditor({
             // Check if table is empty (all cells empty)
             let isEmpty = true;
             tableNode.descendants((node) => {
-              if (node.isText || (node.type.name === "paragraph" && node.content.size > 0)) {
+              if (
+                node.isText ||
+                (node.type.name === "paragraph" && node.content.size > 0)
+              ) {
                 isEmpty = false;
                 return false;
               }
@@ -385,16 +539,22 @@ export default function TiptapEditor({
 
             // Also check if cursor is at the very beginning
             const isAtStart = $from.parentOffset === 0;
-            
+
             if (isEmpty || isAtStart) {
               // Check if current cell is empty
               const cellNode = $from.parent;
-              const cellIsEmpty = cellNode.content.size === 0 || 
-                (cellNode.content.size === 2 && cellNode.firstChild?.type.name === "paragraph" && cellNode.firstChild.content.size === 0);
-              
+              const cellIsEmpty =
+                cellNode.content.size === 0 ||
+                (cellNode.content.size === 2 &&
+                  cellNode.firstChild?.type.name === "paragraph" &&
+                  cellNode.firstChild.content.size === 0);
+
               if (cellIsEmpty && isAtStart) {
                 // Delete the entire table
-                const tr = state.tr.delete(tablePos, tablePos + tableNode.nodeSize);
+                const tr = state.tr.delete(
+                  tablePos,
+                  tablePos + tableNode.nodeSize,
+                );
                 view.dispatch(tr);
                 return true;
               }
@@ -417,12 +577,30 @@ export default function TiptapEditor({
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
-      if (fontDropdownRef.current && !fontDropdownRef.current.contains(target)) setFontDropdownOpen(false);
-      if (sizeDropdownRef.current && !sizeDropdownRef.current.contains(target)) setSizeDropdownOpen(false);
-      if (colorDropdownRef.current && !colorDropdownRef.current.contains(target)) setColorDropdownOpen(false);
-      if (highlightDropdownRef.current && !highlightDropdownRef.current.contains(target)) setHighlightDropdownOpen(false);
-      if (lineHeightDropdownRef.current && !lineHeightDropdownRef.current.contains(target)) setLineHeightDropdownOpen(false);
-      if (tableDropdownRef.current && !tableDropdownRef.current.contains(target)) setTableDropdownOpen(false);
+      if (fontDropdownRef.current && !fontDropdownRef.current.contains(target))
+        setFontDropdownOpen(false);
+      if (sizeDropdownRef.current && !sizeDropdownRef.current.contains(target))
+        setSizeDropdownOpen(false);
+      if (
+        colorDropdownRef.current &&
+        !colorDropdownRef.current.contains(target)
+      )
+        setColorDropdownOpen(false);
+      if (
+        highlightDropdownRef.current &&
+        !highlightDropdownRef.current.contains(target)
+      )
+        setHighlightDropdownOpen(false);
+      if (
+        lineHeightDropdownRef.current &&
+        !lineHeightDropdownRef.current.contains(target)
+      )
+        setLineHeightDropdownOpen(false);
+      if (
+        tableDropdownRef.current &&
+        !tableDropdownRef.current.contains(target)
+      )
+        setTableDropdownOpen(false);
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -437,7 +615,9 @@ export default function TiptapEditor({
       if (!container) return;
 
       // Remove existing handles
-      container.querySelectorAll(".col-handle-injected").forEach((el) => el.remove());
+      container
+        .querySelectorAll(".col-handle-injected")
+        .forEach((el) => el.remove());
 
       const table = container.querySelector("table");
       if (!table) return;
@@ -516,7 +696,9 @@ export default function TiptapEditor({
   // Handlers
   const handleFontSelect = (fontValue: string, fontName: string) => {
     if (!editor) return;
-    fontValue === "" ? editor.chain().focus().unsetFontFamily().run() : editor.chain().focus().setFontFamily(fontValue).run();
+    fontValue === ""
+      ? editor.chain().focus().unsetFontFamily().run()
+      : editor.chain().focus().setFontFamily(fontValue).run();
     setCurrentFont(fontName);
     setFontDropdownOpen(false);
   };
@@ -537,7 +719,9 @@ export default function TiptapEditor({
 
   const handleHighlightSelect = (colorValue: string) => {
     if (!editor) return;
-    colorValue === "" ? editor.chain().focus().unsetBackgroundColor().run() : editor.chain().focus().setBackgroundColor(colorValue).run();
+    colorValue === ""
+      ? editor.chain().focus().unsetBackgroundColor().run()
+      : editor.chain().focus().setBackgroundColor(colorValue).run();
     setCurrentHighlight(colorValue);
     setHighlightDropdownOpen(false);
   };
@@ -574,7 +758,11 @@ export default function TiptapEditor({
 
   const insertTable = (rows: number, cols: number) => {
     if (!editor) return;
-    editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
+    editor
+      .chain()
+      .focus()
+      .insertTable({ rows, cols, withHeaderRow: true })
+      .run();
     closeAllDropdowns();
   };
 
@@ -615,10 +803,18 @@ export default function TiptapEditor({
     <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
       {/* Toolbar Row 1 */}
       <div className="flex flex-wrap items-center gap-1 px-2 py-1.5 bg-gray-50 border-b border-gray-200">
-        <ToolbarButton onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} title="Undo">
+        <ToolbarButton
+          onClick={() => editor.chain().focus().undo().run()}
+          disabled={!editor.can().undo()}
+          title="Undo"
+        >
           <Undo size={16} />
         </ToolbarButton>
-        <ToolbarButton onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} title="Redo">
+        <ToolbarButton
+          onClick={() => editor.chain().focus().redo().run()}
+          disabled={!editor.can().redo()}
+          title="Redo"
+        >
           <Redo size={16} />
         </ToolbarButton>
 
@@ -626,15 +822,31 @@ export default function TiptapEditor({
 
         {/* Font Dropdown */}
         <div className="relative" ref={fontDropdownRef}>
-          <button type="button" onClick={() => { closeAllDropdowns(); setFontDropdownOpen(!fontDropdownOpen); }} className="flex items-center gap-1 px-2 py-1 rounded border border-gray-200 bg-white text-xs font-medium text-gray-700 min-w-[100px] justify-between hover:bg-gray-50">
+          <button
+            type="button"
+            onClick={() => {
+              closeAllDropdowns();
+              setFontDropdownOpen(!fontDropdownOpen);
+            }}
+            className="flex items-center gap-1 px-2 py-1 rounded border border-gray-200 bg-white text-xs font-medium text-gray-700 min-w-[100px] justify-between hover:bg-gray-50"
+          >
             <Type size={14} className="text-gray-500" />
             <span className="truncate flex-1 text-left">{currentFont}</span>
-            <ChevronDown size={12} className={`text-gray-400 ${fontDropdownOpen ? "rotate-180" : ""}`} />
+            <ChevronDown
+              size={12}
+              className={`text-gray-400 ${fontDropdownOpen ? "rotate-180" : ""}`}
+            />
           </button>
           {fontDropdownOpen && (
             <div className="absolute top-full left-0 mt-1 w-44 max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg z-50">
               {FONTS.map((font) => (
-                <button key={font.name} type="button" onClick={() => handleFontSelect(font.value, font.name)} style={{ fontFamily: font.value || "inherit" }} className={`w-full text-left px-3 py-2 hover:bg-gray-50 text-sm ${currentFont === font.name ? "bg-gray-100" : ""}`}>
+                <button
+                  key={font.name}
+                  type="button"
+                  onClick={() => handleFontSelect(font.value, font.name)}
+                  style={{ fontFamily: font.value || "inherit" }}
+                  className={`w-full text-left px-3 py-2 hover:bg-gray-50 text-sm ${currentFont === font.name ? "bg-gray-100" : ""}`}
+                >
                   {font.name}
                 </button>
               ))}
@@ -644,14 +856,29 @@ export default function TiptapEditor({
 
         {/* Size Dropdown */}
         <div className="relative" ref={sizeDropdownRef}>
-          <button type="button" onClick={() => { closeAllDropdowns(); setSizeDropdownOpen(!sizeDropdownOpen); }} className="flex items-center gap-1 px-2 py-1 rounded border border-gray-200 bg-white text-xs font-medium text-gray-700 min-w-[50px] justify-between hover:bg-gray-50">
+          <button
+            type="button"
+            onClick={() => {
+              closeAllDropdowns();
+              setSizeDropdownOpen(!sizeDropdownOpen);
+            }}
+            className="flex items-center gap-1 px-2 py-1 rounded border border-gray-200 bg-white text-xs font-medium text-gray-700 min-w-[50px] justify-between hover:bg-gray-50"
+          >
             <span>{currentSize}</span>
-            <ChevronDown size={12} className={`text-gray-400 ${sizeDropdownOpen ? "rotate-180" : ""}`} />
+            <ChevronDown
+              size={12}
+              className={`text-gray-400 ${sizeDropdownOpen ? "rotate-180" : ""}`}
+            />
           </button>
           {sizeDropdownOpen && (
             <div className="absolute top-full left-0 mt-1 w-16 max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg z-50">
               {FONT_SIZES.map((size) => (
-                <button key={size.value} type="button" onClick={() => handleSizeSelect(size.value, size.label)} className={`w-full text-left px-3 py-2 hover:bg-gray-50 text-sm ${currentSize === size.label ? "bg-gray-100" : ""}`}>
+                <button
+                  key={size.value}
+                  type="button"
+                  onClick={() => handleSizeSelect(size.value, size.label)}
+                  className={`w-full text-left px-3 py-2 hover:bg-gray-50 text-sm ${currentSize === size.label ? "bg-gray-100" : ""}`}
+                >
                   {size.label}
                 </button>
               ))}
@@ -661,16 +888,32 @@ export default function TiptapEditor({
 
         <ToolbarDivider />
 
-        <ToolbarButton onClick={() => editor.chain().focus().toggleBold().run()} isActive={editor.isActive("bold")} title="Bold">
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleBold().run()}
+          isActive={editor.isActive("bold")}
+          title="Bold"
+        >
           <Bold size={16} />
         </ToolbarButton>
-        <ToolbarButton onClick={() => editor.chain().focus().toggleItalic().run()} isActive={editor.isActive("italic")} title="Italic">
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleItalic().run()}
+          isActive={editor.isActive("italic")}
+          title="Italic"
+        >
           <Italic size={16} />
         </ToolbarButton>
-        <ToolbarButton onClick={() => editor.chain().focus().toggleUnderline().run()} isActive={editor.isActive("underline")} title="Underline">
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleUnderline().run()}
+          isActive={editor.isActive("underline")}
+          title="Underline"
+        >
           <UnderlineIcon size={16} />
         </ToolbarButton>
-        <ToolbarButton onClick={() => editor.chain().focus().toggleStrike().run()} isActive={editor.isActive("strike")} title="Strikethrough">
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleStrike().run()}
+          isActive={editor.isActive("strike")}
+          title="Strikethrough"
+        >
           <Minus size={16} />
         </ToolbarButton>
 
@@ -678,15 +921,33 @@ export default function TiptapEditor({
 
         {/* Text Color */}
         <div className="relative" ref={colorDropdownRef}>
-          <button type="button" onClick={() => { closeAllDropdowns(); setColorDropdownOpen(!colorDropdownOpen); }} className="p-1.5 rounded hover:bg-gray-100 text-gray-600 flex items-center gap-1" title="Text Color">
+          <button
+            type="button"
+            onClick={() => {
+              closeAllDropdowns();
+              setColorDropdownOpen(!colorDropdownOpen);
+            }}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-600 flex items-center gap-1"
+            title="Text Color"
+          >
             <Palette size={16} />
-            <div className="w-3 h-3 rounded-sm border border-gray-300" style={{ backgroundColor: currentColor }} />
+            <div
+              className="w-3 h-3 rounded-sm border border-gray-300"
+              style={{ backgroundColor: currentColor }}
+            />
           </button>
           {colorDropdownOpen && (
             <div className="absolute top-full left-0 mt-1 p-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-36">
               <div className="grid grid-cols-4 gap-1">
                 {TEXT_COLORS.map((color) => (
-                  <button key={color.value} type="button" onClick={() => handleColorSelect(color.value)} className={`w-7 h-7 rounded border-2 ${currentColor === color.value ? "border-blue-500" : "border-gray-200"}`} style={{ backgroundColor: color.value }} title={color.name} />
+                  <button
+                    key={color.value}
+                    type="button"
+                    onClick={() => handleColorSelect(color.value)}
+                    className={`w-7 h-7 rounded border-2 ${currentColor === color.value ? "border-blue-500" : "border-gray-200"}`}
+                    style={{ backgroundColor: color.value }}
+                    title={color.name}
+                  />
                 ))}
               </div>
             </div>
@@ -695,16 +956,36 @@ export default function TiptapEditor({
 
         {/* Highlight */}
         <div className="relative" ref={highlightDropdownRef}>
-          <button type="button" onClick={() => { closeAllDropdowns(); setHighlightDropdownOpen(!highlightDropdownOpen); }} className="p-1.5 rounded hover:bg-gray-100 text-gray-600 flex items-center gap-1" title="Highlight">
+          <button
+            type="button"
+            onClick={() => {
+              closeAllDropdowns();
+              setHighlightDropdownOpen(!highlightDropdownOpen);
+            }}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-600 flex items-center gap-1"
+            title="Highlight"
+          >
             <Highlighter size={16} />
-            <div className="w-3 h-3 rounded-sm border border-gray-300" style={{ backgroundColor: currentHighlight || "transparent" }} />
+            <div
+              className="w-3 h-3 rounded-sm border border-gray-300"
+              style={{ backgroundColor: currentHighlight || "transparent" }}
+            />
           </button>
           {highlightDropdownOpen && (
             <div className="absolute top-full left-0 mt-1 p-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-32">
               <div className="grid grid-cols-3 gap-1">
                 {HIGHLIGHT_COLORS.map((color) => (
-                  <button key={color.value || "none"} type="button" onClick={() => handleHighlightSelect(color.value)} className={`w-6 h-6 rounded border-2 ${currentHighlight === color.value ? "border-blue-500" : "border-gray-200"}`} style={{ backgroundColor: color.value || "white" }} title={color.name}>
-                    {color.value === "" && <span className="text-red-500 text-xs">✕</span>}
+                  <button
+                    key={color.value || "none"}
+                    type="button"
+                    onClick={() => handleHighlightSelect(color.value)}
+                    className={`w-6 h-6 rounded border-2 ${currentHighlight === color.value ? "border-blue-500" : "border-gray-200"}`}
+                    style={{ backgroundColor: color.value || "white" }}
+                    title={color.name}
+                  >
+                    {color.value === "" && (
+                      <span className="text-red-500 text-xs">✕</span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -714,10 +995,18 @@ export default function TiptapEditor({
 
         <ToolbarDivider />
 
-        <ToolbarButton onClick={() => editor.chain().focus().toggleSuperscript().run()} isActive={editor.isActive("superscript")} title="Superscript">
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleSuperscript().run()}
+          isActive={editor.isActive("superscript")}
+          title="Superscript"
+        >
           <SuperscriptIcon size={16} />
         </ToolbarButton>
-        <ToolbarButton onClick={() => editor.chain().focus().toggleSubscript().run()} isActive={editor.isActive("subscript")} title="Subscript">
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleSubscript().run()}
+          isActive={editor.isActive("subscript")}
+          title="Subscript"
+        >
           <SubscriptIcon size={16} />
         </ToolbarButton>
 
@@ -730,34 +1019,64 @@ export default function TiptapEditor({
 
       {/* Toolbar Row 2 */}
       <div className="flex flex-wrap items-center gap-1 px-2 py-1.5 bg-gray-50 border-b border-gray-200">
-        <ToolbarButton onClick={() => editor.chain().focus().setTextAlign("left").run()} isActive={editor.isActive({ textAlign: "left" })} title="Align Left">
+        <ToolbarButton
+          onClick={() => editor.chain().focus().setTextAlign("left").run()}
+          isActive={editor.isActive({ textAlign: "left" })}
+          title="Align Left"
+        >
           <AlignLeft size={16} />
         </ToolbarButton>
-        <ToolbarButton onClick={() => editor.chain().focus().setTextAlign("center").run()} isActive={editor.isActive({ textAlign: "center" })} title="Align Center">
+        <ToolbarButton
+          onClick={() => editor.chain().focus().setTextAlign("center").run()}
+          isActive={editor.isActive({ textAlign: "center" })}
+          title="Align Center"
+        >
           <AlignCenter size={16} />
         </ToolbarButton>
-        <ToolbarButton onClick={() => editor.chain().focus().setTextAlign("right").run()} isActive={editor.isActive({ textAlign: "right" })} title="Align Right">
+        <ToolbarButton
+          onClick={() => editor.chain().focus().setTextAlign("right").run()}
+          isActive={editor.isActive({ textAlign: "right" })}
+          title="Align Right"
+        >
           <AlignRight size={16} />
         </ToolbarButton>
-        <ToolbarButton onClick={() => editor.chain().focus().setTextAlign("justify").run()} isActive={editor.isActive({ textAlign: "justify" })} title="Justify">
+        <ToolbarButton
+          onClick={() => editor.chain().focus().setTextAlign("justify").run()}
+          isActive={editor.isActive({ textAlign: "justify" })}
+          title="Justify"
+        >
           <AlignJustify size={16} />
         </ToolbarButton>
 
         <ToolbarDivider />
 
-        <ToolbarButton onClick={() => editor.chain().focus().toggleBulletList().run()} isActive={editor.isActive("bulletList")} title="Bullet List">
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleBulletList().run()}
+          isActive={editor.isActive("bulletList")}
+          title="Bullet List"
+        >
           <List size={16} />
         </ToolbarButton>
-        <ToolbarButton onClick={() => editor.chain().focus().toggleOrderedList().run()} isActive={editor.isActive("orderedList")} title="Numbered List">
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleOrderedList().run()}
+          isActive={editor.isActive("orderedList")}
+          title="Numbered List"
+        >
           <ListOrdered size={16} />
         </ToolbarButton>
 
         <ToolbarDivider />
 
-        <ToolbarButton onClick={() => editor.chain().focus().sinkListItem("listItem").run()} title="Increase Indent">
+        <ToolbarButton
+          onClick={() => editor.chain().focus().sinkListItem("listItem").run()}
+          title="Increase Indent"
+        >
           <IndentIncrease size={16} />
         </ToolbarButton>
-        <ToolbarButton onClick={() => editor.chain().focus().liftListItem("listItem").run()} title="Decrease Indent">
+        <ToolbarButton
+          onClick={() => editor.chain().focus().liftListItem("listItem").run()}
+          title="Decrease Indent"
+        >
           <IndentDecrease size={16} />
         </ToolbarButton>
 
@@ -765,15 +1084,31 @@ export default function TiptapEditor({
 
         {/* Line Height */}
         <div className="relative" ref={lineHeightDropdownRef}>
-          <button type="button" onClick={() => { closeAllDropdowns(); setLineHeightDropdownOpen(!lineHeightDropdownOpen); }} className="flex items-center gap-1 px-2 py-1 rounded border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50" title="Line Spacing">
+          <button
+            type="button"
+            onClick={() => {
+              closeAllDropdowns();
+              setLineHeightDropdownOpen(!lineHeightDropdownOpen);
+            }}
+            className="flex items-center gap-1 px-2 py-1 rounded border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50"
+            title="Line Spacing"
+          >
             <span className="text-xs">↕</span>
             <span>{currentLineHeight}</span>
-            <ChevronDown size={12} className={`text-gray-400 ${lineHeightDropdownOpen ? "rotate-180" : ""}`} />
+            <ChevronDown
+              size={12}
+              className={`text-gray-400 ${lineHeightDropdownOpen ? "rotate-180" : ""}`}
+            />
           </button>
           {lineHeightDropdownOpen && (
             <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[80px]">
               {LINE_HEIGHTS.map((item) => (
-                <button key={item.value} type="button" onClick={() => handleLineHeightSelect(item.value)} className={`w-full text-left px-3 py-2 hover:bg-gray-50 text-sm ${currentLineHeight === item.value ? "bg-gray-100" : ""}`}>
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => handleLineHeightSelect(item.value)}
+                  className={`w-full text-left px-3 py-2 hover:bg-gray-50 text-sm ${currentLineHeight === item.value ? "bg-gray-100" : ""}`}
+                >
                   {item.label}
                 </button>
               ))}
@@ -791,17 +1126,42 @@ export default function TiptapEditor({
 
         {/* Table Insert */}
         <div className="relative" ref={tableDropdownRef}>
-          <button type="button" onClick={() => { closeAllDropdowns(); setTableDropdownOpen(!tableDropdownOpen); }} className="flex items-center gap-1 px-2 py-1 rounded border border-gray-200 bg-white text-gray-700 hover:bg-gray-50" title="Insert Table">
+          <button
+            type="button"
+            onClick={() => {
+              closeAllDropdowns();
+              setTableDropdownOpen(!tableDropdownOpen);
+            }}
+            className="flex items-center gap-1 px-2 py-1 rounded border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+            title="Insert Table"
+          >
             <Table size={16} />
-            <ChevronDown size={12} className={`text-gray-400 ${tableDropdownOpen ? "rotate-180" : ""}`} />
+            <ChevronDown
+              size={12}
+              className={`text-gray-400 ${tableDropdownOpen ? "rotate-180" : ""}`}
+            />
           </button>
           {tableDropdownOpen && (
             <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-              <div className="text-xs text-gray-500 px-3 py-2 border-b border-gray-100 font-medium">Insert Table</div>
+              <div className="text-xs text-gray-500 px-3 py-2 border-b border-gray-100 font-medium">
+                Insert Table
+              </div>
               <TableInsertGrid onInsert={insertTable} />
               <div className="border-t border-gray-100 p-2 flex gap-1">
-                <button type="button" onClick={() => insertTable(3, 3)} className="flex-1 px-2 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded">3×3</button>
-                <button type="button" onClick={() => insertTable(4, 4)} className="flex-1 px-2 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded">4×4</button>
+                <button
+                  type="button"
+                  onClick={() => insertTable(3, 3)}
+                  className="flex-1 px-2 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded"
+                >
+                  3×3
+                </button>
+                <button
+                  type="button"
+                  onClick={() => insertTable(4, 4)}
+                  className="flex-1 px-2 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded"
+                >
+                  4×4
+                </button>
               </div>
             </div>
           )}
@@ -816,24 +1176,55 @@ export default function TiptapEditor({
       {/* Editor Content with Table Wrapper */}
       <div className="relative" ref={editorContainerRef}>
         {editor && (
-          <BubbleMenu editor={editor} options={{ placement: "top", offset: 8, flip: true }} className="flex items-center gap-1 bg-gray-900 text-white rounded-lg shadow-lg px-2 py-1.5">
-            <button onClick={() => editor.chain().focus().toggleBold().run()} className={`p-1.5 rounded ${editor.isActive("bold") ? "bg-gray-700" : "hover:bg-gray-700"}`}>
+          <BubbleMenu
+            editor={editor}
+            options={{ placement: "top", offset: 8, flip: true }}
+            className="flex items-center gap-1 bg-gray-900 text-white rounded-lg shadow-lg px-2 py-1.5"
+          >
+            <button
+              onClick={() => editor.chain().focus().toggleBold().run()}
+              className={`p-1.5 rounded ${editor.isActive("bold") ? "bg-gray-700" : "hover:bg-gray-700"}`}
+            >
               <Bold size={16} />
             </button>
-            <button onClick={() => editor.chain().focus().toggleItalic().run()} className={`p-1.5 rounded ${editor.isActive("italic") ? "bg-gray-700" : "hover:bg-gray-700"}`}>
+            <button
+              onClick={() => editor.chain().focus().toggleItalic().run()}
+              className={`p-1.5 rounded ${editor.isActive("italic") ? "bg-gray-700" : "hover:bg-gray-700"}`}
+            >
               <Italic size={16} />
             </button>
-            <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={`p-1.5 rounded ${editor.isActive("underline") ? "bg-gray-700" : "hover:bg-gray-700"}`}>
+            <button
+              onClick={() => editor.chain().focus().toggleUnderline().run()}
+              className={`p-1.5 rounded ${editor.isActive("underline") ? "bg-gray-700" : "hover:bg-gray-700"}`}
+            >
               <UnderlineIcon size={16} />
             </button>
             <div className="w-px h-5 bg-gray-600 mx-1" />
-            <button onClick={handleCopy} className="p-1.5 rounded hover:bg-gray-700 flex items-center gap-1">
-              {copied ? <><Check size={16} /><span className="text-xs">Copied!</span></> : <><Copy size={16} /><span className="text-xs">Copy</span></>}
+            <button
+              onClick={handleCopy}
+              className="p-1.5 rounded hover:bg-gray-700 flex items-center gap-1"
+            >
+              {copied ? (
+                <>
+                  <Check size={16} />
+                  <span className="text-xs">Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Copy size={16} />
+                  <span className="text-xs">Copy</span>
+                </>
+              )}
             </button>
           </BubbleMenu>
         )}
 
         <EditorContent editor={editor} className="table-editor-content" />
+
+        {/* Table Options Menu - Three dots with Copy/Delete */}
+        {isInTable && (
+          <TableOptionsMenu editor={editor} containerRef={editorContainerRef} />
+        )}
 
         {/* Row Handles - positioned based on table rows */}
         {isInTable && (
@@ -853,23 +1244,191 @@ export default function TiptapEditor({
         )}
 
         {/* Add Column Button - Full height on right */}
-        {isInTable && (
+        {/* {isInTable && (
           <AddColumnButton editor={editor} containerRef={editorContainerRef} />
-        )}
+        )} */}
 
         {/* Add Row Button - Full width on bottom */}
-        {isInTable && (
+        {/* {isInTable && (
           <AddRowButton editor={editor} containerRef={editorContainerRef} />
-        )}
+        )} */}
 
         {/* Context Menus */}
-        {rowMenu && <RowContextMenu editor={editor} position={rowMenu} onClose={() => setRowMenu(null)} />}
-        {colMenu && <ColumnContextMenu editor={editor} position={colMenu} onClose={() => setColMenu(null)} />}
+        {rowMenu && (
+          <RowContextMenu
+            editor={editor}
+            position={rowMenu}
+            onClose={() => setRowMenu(null)}
+          />
+        )}
+        {colMenu && (
+          <ColumnContextMenu
+            editor={editor}
+            position={colMenu}
+            onClose={() => setColMenu(null)}
+          />
+        )}
       </div>
     </div>
   );
 }
-// Table Column Handles Component - Three dots on top of each column
+
+// Table Options Menu Component - Three dots on table header, shows Copy/Delete on click
+function TableOptionsMenu({
+  editor,
+  containerRef,
+}: {
+  editor: any;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [isVisible, setIsVisible] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const container = containerRef.current;
+
+    const update = () => {
+      const table = container.querySelector("table");
+      if (!table) {
+        setPos(null);
+        return;
+      }
+
+      const containerRect = container.getBoundingClientRect();
+      const tableRect = table.getBoundingClientRect();
+
+      // Position at top-left corner of table
+      setPos({
+        top: tableRect.top - containerRect.top + 4,
+        left: tableRect.left - containerRect.left - 28,
+      });
+    };
+
+    // Table hover detection
+    const handleMouseMove = (e: MouseEvent) => {
+      const table = container.querySelector("table");
+      if (!table) {
+        if (!menuOpen) setIsVisible(false);
+        return;
+      }
+      const tableRect = table.getBoundingClientRect();
+      // Check if mouse is over table or near the left edge (for the menu)
+      const isOver =
+        e.clientX >= tableRect.left - 40 &&
+        e.clientX <= tableRect.right &&
+        e.clientY >= tableRect.top &&
+        e.clientY <= tableRect.bottom;
+
+      if (!menuOpen) {
+        setIsVisible(isOver);
+      }
+    };
+
+    update();
+    editor.on("update", update);
+    editor.on("selectionUpdate", update);
+    container.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("resize", update);
+
+    return () => {
+      editor.off("update", update);
+      editor.off("selectionUpdate", update);
+      container.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("resize", update);
+    };
+  }, [editor, containerRef, menuOpen]);
+
+  // Close menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleCopy = async () => {
+    if (!containerRef.current) return;
+    const table = containerRef.current.querySelector("table");
+    if (!table) return;
+
+    try {
+      await navigator.clipboard.writeText(table.outerHTML);
+      setCopied(true);
+      setTimeout(() => {
+        setCopied(false);
+        setMenuOpen(false);
+      }, 1000);
+    } catch (err) {
+      console.error("Failed to copy table:", err);
+    }
+  };
+
+  const handleDelete = () => {
+    editor.chain().focus().deleteTable().run();
+    setMenuOpen(false);
+  };
+
+  if (!pos) return null;
+
+  return (
+    <div
+      ref={menuRef}
+      className={`absolute z-50 transition-opacity duration-150 ${isVisible || menuOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+      style={{ top: pos.top, left: pos.left }}
+    >
+      {/* Three dots button */}
+      <button
+        type="button"
+        className="flex items-center justify-center w-6 h-6 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
+        onClick={() => setMenuOpen(!menuOpen)}
+        title="Table options"
+      >
+        <EllipsisVerticalIcon size={16} />
+      </button>
+
+      {/* Dropdown menu */}
+      {menuOpen && (
+        <div className="absolute top-0 left-7 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[120px]">
+          <button
+            type="button"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            onClick={handleCopy}
+          >
+            {copied ? (
+              <>
+                <Check size={16} className="text-green-500" />
+                <span className="text-green-600">Copied!</span>
+              </>
+            ) : (
+              <>
+                <Copy size={16} />
+                <span>Copy</span>
+              </>
+            )}
+          </button>
+          <button
+            type="button"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+            onClick={handleDelete}
+          >
+            <Trash2 size={16} />
+            <span>Delete</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// Table Column Handles Component - Shows only for hovered/active column
 function TableColumnHandles({
   editor,
   containerRef,
@@ -881,11 +1440,13 @@ function TableColumnHandles({
 }) {
   const [columns, setColumns] = useState<{ left: number; width: number }[]>([]);
   const [tableTop, setTableTop] = useState(0);
+  const [activeColIndex, setActiveColIndex] = useState<number | null>(null);
 
   useEffect(() => {
+    if (!containerRef.current) return;
+    const container = containerRef.current;
+
     const update = () => {
-      if (!containerRef.current) return;
-      const container = containerRef.current;
       const table = container.querySelector("table");
       if (!table) {
         setColumns([]);
@@ -896,7 +1457,6 @@ function TableColumnHandles({
       const tableRect = table.getBoundingClientRect();
       setTableTop(tableRect.top - containerRect.top);
 
-      // Get columns from first row (header row)
       const firstRow = table.querySelector("tr");
       if (!firstRow) {
         setColumns([]);
@@ -915,51 +1475,87 @@ function TableColumnHandles({
       setColumns(colData);
     };
 
+    // Detect which column is being hovered
+    const handleMouseMove = (e: MouseEvent) => {
+      const table = container.querySelector("table");
+      if (!table) {
+        setActiveColIndex(null);
+        return;
+      }
+
+      const tableRect = table.getBoundingClientRect();
+      
+      // Check if mouse is over the table
+      if (
+        e.clientX < tableRect.left ||
+        e.clientX > tableRect.right ||
+        e.clientY < tableRect.top ||
+        e.clientY > tableRect.bottom
+      ) {
+        setActiveColIndex(null);
+        return;
+      }
+
+      // Find which column the mouse is over
+      const firstRow = table.querySelector("tr");
+      if (!firstRow) return;
+
+      const cells = firstRow.querySelectorAll("td, th");
+      let foundIndex: number | null = null;
+
+      cells.forEach((cell, idx) => {
+        const cellRect = cell.getBoundingClientRect();
+        if (e.clientX >= cellRect.left && e.clientX <= cellRect.right) {
+          foundIndex = idx;
+        }
+      });
+
+      setActiveColIndex(foundIndex);
+    };
+
     update();
     editor.on("update", update);
     editor.on("selectionUpdate", update);
+    container.addEventListener("mousemove", handleMouseMove);
+    container.addEventListener("mouseleave", () => setActiveColIndex(null));
     window.addEventListener("resize", update);
 
     return () => {
       editor.off("update", update);
       editor.off("selectionUpdate", update);
+      container.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("resize", update);
     };
   }, [editor, containerRef]);
 
-  if (columns.length === 0) return null;
+  if (columns.length === 0 || activeColIndex === null) return null;
+
+  const col = columns[activeColIndex];
+  if (!col) return null;
 
   return (
-    <>
-      {columns.map((col, idx) => (
-        <button
-          key={idx}
-          type="button"
-          className="absolute flex items-center justify-center h-[5px] rounded bg-gray-400 hover:bg-gray-200 text-gray-100 hover:text-gray-700 transition-colors"
-          style={{
-            left: col.left + col.width / 2 - 10,
-            top: tableTop - 1,
-            width: 20,
-          }}
-          onClick={(e) => {
-            const table = containerRef.current?.querySelector("table");
-            const firstRow = table?.querySelector("tr");
-            const cells = firstRow?.querySelectorAll("td, th");
-            const targetCell = cells?.[idx];
-            if (targetCell) (targetCell as HTMLElement).click();
-            onOpenMenu({ x: e.clientX, y: e.clientY });
-          }}
-          title="Column options"
-        >
-          {/* <EllipsisIcon size={14} /> */}
-        </button>
-      ))}
-    </>
+    <button
+      type="button"
+      className="absolute flex  cursor-pointer items-center justify-center h-[4px] rounded bg-gray-400 hover:bg-blue-500 transition-colors"
+      style={{
+        left: col.left + col.width / 2 - 12,
+        top: tableTop - 0,
+        width: 25,
+      }}
+      onClick={(e) => {
+        const table = containerRef.current?.querySelector("table");
+        const firstRow = table?.querySelector("tr");
+        const cells = firstRow?.querySelectorAll("td, th");
+        const targetCell = cells?.[activeColIndex];
+        if (targetCell) (targetCell as HTMLElement).click();
+        onOpenMenu({ x: e.clientX, y: e.clientY });
+      }}
+      title="Column options"
+    />
   );
 }
 
-
-// Table Row Handles Component
+// Table Row Handles Component - Shows only for hovered/active row
 function TableRowHandles({
   editor,
   containerRef,
@@ -971,13 +1567,18 @@ function TableRowHandles({
 }) {
   const [rows, setRows] = useState<{ top: number; height: number }[]>([]);
   const [tableLeft, setTableLeft] = useState(0);
+  const [activeRowIndex, setActiveRowIndex] = useState<number | null>(null);
 
   useEffect(() => {
+    if (!containerRef.current) return;
+    const container = containerRef.current;
+
     const update = () => {
-      if (!containerRef.current) return;
-      const container = containerRef.current;
       const table = container.querySelector("table");
-      if (!table) { setRows([]); return; }
+      if (!table) {
+        setRows([]);
+        return;
+      }
 
       const containerRect = container.getBoundingClientRect();
       const tableRect = table.getBoundingClientRect();
@@ -995,182 +1596,79 @@ function TableRowHandles({
       setRows(rowData);
     };
 
-    update();
-    editor.on("update", update);
-    editor.on("selectionUpdate", update);
-    window.addEventListener("resize", update);
-
-    return () => {
-      editor.off("update", update);
-      editor.off("selectionUpdate", update);
-      window.removeEventListener("resize", update);
-    };
-  }, [editor, containerRef]);
-
-  if (rows.length === 0) return null;
-
-  return (
-    <>
-      {rows.map((row, idx) => (
-        <button
-          key={idx}
-          type="button"
-          className="absolute flex items-center justify-center w-[8px]  rounded bg-gray-400 hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
-          style={{
-            left: tableLeft - 7,
-            top: row.top +22,
-            height: 24,
-          }}
-          onClick={(e) => {
-            const table = containerRef.current?.querySelector("table");
-            const targetRow = table?.querySelectorAll("tr")[idx];
-            const firstCell = targetRow?.querySelector("td, th");
-            if (firstCell) (firstCell as HTMLElement).click();
-            onOpenMenu({ x: e.clientX, y: e.clientY });
-          }}
-          title="Row options"
-        >
-          {/* <EllipsisVerticalIcon size={14} /> */}
-        </button>
-      ))}
-    </>
-  );
-}
-
-// Add Column Button Component - Full height vertical bar on right
-function AddColumnButton({
-  editor,
-  containerRef,
-}: {
-  editor: any;
-  containerRef: React.RefObject<HTMLDivElement | null>;
-}) {
-  const [pos, setPos] = useState<{ right: number; top: number; height: number } | null>(null);
-  const [isHovered, setIsHovered] = useState(false);
-
-  useEffect(() => {
-    const update = () => {
-      if (!containerRef.current) return;
-      const container = containerRef.current;
+    // Detect which row is being hovered
+    const handleMouseMove = (e: MouseEvent) => {
       const table = container.querySelector("table");
-      if (!table) { setPos(null); return; }
+      if (!table) {
+        setActiveRowIndex(null);
+        return;
+      }
 
-      const containerRect = container.getBoundingClientRect();
       const tableRect = table.getBoundingClientRect();
 
-      setPos({
-        right: tableRect.right - containerRect.left,
-        top: tableRect.top - containerRect.top,
-        height: tableRect.height,
+      // Check if mouse is over the table
+      if (
+        e.clientX < tableRect.left ||
+        e.clientX > tableRect.right ||
+        e.clientY < tableRect.top ||
+        e.clientY > tableRect.bottom
+      ) {
+        setActiveRowIndex(null);
+        return;
+      }
+
+      // Find which row the mouse is over
+      const rowEls = table.querySelectorAll("tr");
+      let foundIndex: number | null = null;
+
+      rowEls.forEach((row, idx) => {
+        const rowRect = row.getBoundingClientRect();
+        if (e.clientY >= rowRect.top && e.clientY <= rowRect.bottom) {
+          foundIndex = idx;
+        }
       });
+
+      setActiveRowIndex(foundIndex);
     };
 
     update();
     editor.on("update", update);
     editor.on("selectionUpdate", update);
+    container.addEventListener("mousemove", handleMouseMove);
+    container.addEventListener("mouseleave", () => setActiveRowIndex(null));
     window.addEventListener("resize", update);
 
     return () => {
       editor.off("update", update);
       editor.off("selectionUpdate", update);
+      container.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("resize", update);
     };
   }, [editor, containerRef]);
 
-  if (!pos) return null;
+  if (rows.length === 0 || activeRowIndex === null) return null;
+
+  const row = rows[activeRowIndex];
+  if (!row) return null;
 
   return (
-    <div
-      className="absolute flex items-center transition-opacity"
+    <button
+      type="button"
+      className="absolute cursor-pointer flex items-center justify-center w-[4px] rounded bg-gray-400 hover:bg-blue-500 transition-colors"
       style={{
-        left: pos.right + 4,
-        top: pos.top,
-        height: pos.height,
+        left: tableLeft - 0,
+        top: row.top + row.height / 2 - 12,
+        height: 24,
       }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      {/* Vertical line */}
-      <div className={`w-[16px] cursor-pointer flex items-center justify-center h-full rounded-sm transition-colors ${isHovered ? "bg-gray-200" : "bg-gray-300"}`}>
-         <button 
-          className="cursor-pointer"
-          onClick={() => editor.chain().focus().addColumnAfter().run()}
-          title="Add column"
-        >
-
-         <Plus size={14} />
-        </button>
-      </div>
-      
-    </div>
+      onClick={(e) => {
+        const table = containerRef.current?.querySelector("table");
+        const targetRow = table?.querySelectorAll("tr")[activeRowIndex];
+        const firstCell = targetRow?.querySelector("td, th");
+        if (firstCell) (firstCell as HTMLElement).click();
+        onOpenMenu({ x: e.clientX, y: e.clientY });
+      }}
+      title="Row options"
+    />
   );
 }
 
-// Add Row Button Component - Full width horizontal bar on bottom
-function AddRowButton({
-  editor,
-  containerRef,
-}: {
-  editor: any;
-  containerRef: React.RefObject<HTMLDivElement | null>;
-}) {
-  const [pos, setPos] = useState<{ left: number; bottom: number; width: number } | null>(null);
-  const [isHovered, setIsHovered] = useState(false);
-
-  useEffect(() => {
-    const update = () => {
-      if (!containerRef.current) return;
-      const container = containerRef.current;
-      const table = container.querySelector("table");
-      if (!table) { setPos(null); return; }
-
-      const containerRect = container.getBoundingClientRect();
-      const tableRect = table.getBoundingClientRect();
-
-      setPos({
-        left: tableRect.left - containerRect.left,
-        bottom: tableRect.bottom - containerRect.top,
-        width: tableRect.width,
-      });
-    };
-
-    update();
-    editor.on("update", update);
-    editor.on("selectionUpdate", update);
-    window.addEventListener("resize", update);
-
-    return () => {
-      editor.off("update", update);
-      editor.off("selectionUpdate", update);
-      window.removeEventListener("resize", update);
-    };
-  }, [editor, containerRef]);
-
-  if (!pos) return null;
-
-  return (
-    <div
-      className="absolute flex flex-col items-center transition-opacity"
-      style={{
-        left: pos.left,
-        top: pos.bottom + 4,
-        width: pos.width,
-      }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      {/* Horizontal line */}
-      <div className={`h-[16px] cursor-pointer flex items-center justify-center w-full rounded-sm transition-colors ${isHovered ? "bg-gray-200" : "bg-gray-300"}`} >
-        <button 
-        className="cursor-pointer"
-         onClick={() => editor.chain().focus().addRowAfter().run()}
-         title="Add row"
-        >
-
-        <Plus size={14} />
-        </button>
-      </div>
-      
-    </div>
-  );
-}

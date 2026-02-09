@@ -3,6 +3,7 @@
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
+import { createPortal } from "react-dom";
 
 import {
   TextStyle,
@@ -56,6 +57,8 @@ import {
   MoreHorizontal,
   PanelTop,
   PanelLeft,
+  EllipsisIcon,
+  EllipsisVerticalIcon,
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 
@@ -160,16 +163,14 @@ const TableInsertGrid = ({
 
   return (
     <div className="p-3">
-      <div className="text-xs text-gray-500 mb-2 text-center">
-        {hoveredRow > 0 && hoveredCol > 0
-          ? `${hoveredRow} × ${hoveredCol}`
-          : "Select size"}
-      </div>
+      {/* <div className="text-xs text-gray-500 mb-2 text-center">
+        {hoveredRow > 0 && hoveredCol > 0 ? `${hoveredRow} × ${hoveredCol}` : "Select size"}
+      </div> */}
       <div
         className="grid gap-1"
         style={{ gridTemplateColumns: "repeat(8, 1fr)" }}
       >
-        {Array.from({ length: 64 }).map((_, index) => {
+        {Array.from({ length: 32 }).map((_, index) => {
           const row = Math.floor(index / 8) + 1;
           const col = (index % 8) + 1;
           const isHighlighted = row <= hoveredRow && col <= hoveredCol;
@@ -199,7 +200,9 @@ const TableInsertGrid = ({
   );
 };
 
-// Row Context Menu
+
+
+// Row Context Menu - Position aware (opens up if no space below)
 const RowContextMenu = ({
   editor,
   position,
@@ -210,11 +213,11 @@ const RowContextMenu = ({
   onClose: () => void;
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [adjustedPosition, setAdjustedPosition] = useState(position);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node))
-        onClose();
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
     };
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -227,6 +230,42 @@ const RowContextMenu = ({
     };
   }, [onClose]);
 
+  // Adjust position to keep menu in viewport
+  useEffect(() => {
+    if (!menuRef.current) return;
+
+    const menu = menuRef.current;
+    const menuRect = menu.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+
+    let newX = position.x;
+    let newY = position.y;
+
+    // Check if menu goes below viewport
+    if (position.y + menuRect.height > viewportHeight - 10) {
+      // Open upward instead
+      newY = position.y - menuRect.height;
+    }
+
+    // Check if menu goes beyond right edge
+    if (position.x + menuRect.width > viewportWidth - 10) {
+      newX = position.x - menuRect.width;
+    }
+
+    // Make sure it doesn't go above viewport
+    if (newY < 10) {
+      newY = 10;
+    }
+
+    // Make sure it doesn't go beyond left edge
+    if (newX < 10) {
+      newX = 10;
+    }
+
+    setAdjustedPosition({ x: newX, y: newY });
+  }, [position]);
+
   const handleAction = (action: () => void) => {
     action();
     onClose();
@@ -236,48 +275,38 @@ const RowContextMenu = ({
     <div
       ref={menuRef}
       className="fixed z-[100] bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-[180px]"
-      style={{ left: position.x, top: position.y }}
+      style={{ left: adjustedPosition.x, top: adjustedPosition.y }}
     >
       <button
         className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-        onClick={() =>
-          handleAction(() => editor.chain().focus().toggleHeaderRow().run())
-        }
+        onClick={() => handleAction(() => editor.chain().focus().toggleHeaderRow().run())}
       >
         <PanelTop size={16} /> Header Row
       </button>
       <div className="h-px bg-gray-200 my-1" />
       <button
         className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-        onClick={() =>
-          handleAction(() => editor.chain().focus().addRowBefore().run())
-        }
+        onClick={() => handleAction(() => editor.chain().focus().addRowBefore().run())}
       >
         <ArrowUp size={16} /> Insert Above
       </button>
       <button
         className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-        onClick={() =>
-          handleAction(() => editor.chain().focus().addRowAfter().run())
-        }
+        onClick={() => handleAction(() => editor.chain().focus().addRowAfter().run())}
       >
         <ArrowDown size={16} /> Insert Below
       </button>
       <div className="h-px bg-gray-200 my-1" />
       <button
         className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-        onClick={() =>
-          handleAction(() => editor.chain().focus().addRowAfter().run())
-        }
+        onClick={() => handleAction(() => editor.chain().focus().addRowAfter().run())}
       >
         <Copy size={16} /> Duplicate
       </button>
       <div className="h-px bg-gray-200 my-1" />
       <button
         className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-        onClick={() =>
-          handleAction(() => editor.chain().focus().deleteRow().run())
-        }
+        onClick={() => handleAction(() => editor.chain().focus().deleteRow().run())}
       >
         <Trash2 size={16} /> Delete Row
       </button>
@@ -285,7 +314,7 @@ const RowContextMenu = ({
   );
 };
 
-// Column Context Menu
+// Column Context Menu - Position aware (opens left if no space on right)
 const ColumnContextMenu = ({
   editor,
   position,
@@ -296,11 +325,11 @@ const ColumnContextMenu = ({
   onClose: () => void;
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [adjustedPosition, setAdjustedPosition] = useState(position);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node))
-        onClose();
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
     };
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -313,6 +342,41 @@ const ColumnContextMenu = ({
     };
   }, [onClose]);
 
+  // Adjust position to keep menu in viewport
+  useEffect(() => {
+    if (!menuRef.current) return;
+
+    const menu = menuRef.current;
+    const menuRect = menu.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+
+    let newX = position.x;
+    let newY = position.y;
+
+    // Check if menu goes below viewport
+    if (position.y + menuRect.height > viewportHeight - 10) {
+      newY = position.y - menuRect.height;
+    }
+
+    // Check if menu goes beyond right edge
+    if (position.x + menuRect.width > viewportWidth - 10) {
+      newX = position.x - menuRect.width;
+    }
+
+    // Make sure it doesn't go above viewport
+    if (newY < 10) {
+      newY = 10;
+    }
+
+    // Make sure it doesn't go beyond left edge
+    if (newX < 10) {
+      newX = 10;
+    }
+
+    setAdjustedPosition({ x: newX, y: newY });
+  }, [position]);
+
   const handleAction = (action: () => void) => {
     action();
     onClose();
@@ -322,48 +386,38 @@ const ColumnContextMenu = ({
     <div
       ref={menuRef}
       className="fixed z-[100] bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-[180px]"
-      style={{ left: position.x, top: position.y }}
+      style={{ left: adjustedPosition.x, top: adjustedPosition.y }}
     >
       <button
         className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-        onClick={() =>
-          handleAction(() => editor.chain().focus().toggleHeaderColumn().run())
-        }
+        onClick={() => handleAction(() => editor.chain().focus().toggleHeaderColumn().run())}
       >
         <PanelLeft size={16} /> Header Column
       </button>
       <div className="h-px bg-gray-200 my-1" />
       <button
         className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-        onClick={() =>
-          handleAction(() => editor.chain().focus().addColumnBefore().run())
-        }
+        onClick={() => handleAction(() => editor.chain().focus().addColumnBefore().run())}
       >
         <ArrowLeft size={16} /> Insert Left
       </button>
       <button
         className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-        onClick={() =>
-          handleAction(() => editor.chain().focus().addColumnAfter().run())
-        }
+        onClick={() => handleAction(() => editor.chain().focus().addColumnAfter().run())}
       >
         <ArrowRight size={16} /> Insert Right
       </button>
       <div className="h-px bg-gray-200 my-1" />
       <button
         className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-        onClick={() =>
-          handleAction(() => editor.chain().focus().addColumnAfter().run())
-        }
+        onClick={() => handleAction(() => editor.chain().focus().addColumnAfter().run())}
       >
         <Copy size={16} /> Duplicate
       </button>
       <div className="h-px bg-gray-200 my-1" />
       <button
         className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-        onClick={() =>
-          handleAction(() => editor.chain().focus().deleteColumn().run())
-        }
+        onClick={() => handleAction(() => editor.chain().focus().deleteColumn().run())}
       >
         <Trash2 size={16} /> Delete Column
       </button>
@@ -448,7 +502,7 @@ export default function TiptapEditor({
     },
     editorProps: {
       attributes: {
-        class: "prose prose-sm max-w-none focus:outline-none min-h-[200px] p-4",
+        class: "prose prose-sm max-w-none focus:outline-none min-h-[200px]",
         spellcheck: "true",
       },
       handleKeyDown: (view, event) => {
@@ -1167,6 +1221,11 @@ export default function TiptapEditor({
 
         <EditorContent editor={editor} className="table-editor-content" />
 
+        {/* Table Options Menu - Three dots with Copy/Delete */}
+        {isInTable && (
+          <TableOptionsMenu editor={editor} containerRef={editorContainerRef} />
+        )}
+
         {/* Row Handles - positioned based on table rows */}
         {isInTable && (
           <TableRowHandles
@@ -1185,14 +1244,14 @@ export default function TiptapEditor({
         )}
 
         {/* Add Column Button - Full height on right */}
-        {isInTable && (
+        {/* {isInTable && (
           <AddColumnButton editor={editor} containerRef={editorContainerRef} />
-        )}
+        )} */}
 
         {/* Add Row Button - Full width on bottom */}
-        {isInTable && (
+        {/* {isInTable && (
           <AddRowButton editor={editor} containerRef={editorContainerRef} />
-        )}
+        )} */}
 
         {/* Context Menus */}
         {rowMenu && (
@@ -1214,7 +1273,331 @@ export default function TiptapEditor({
   );
 }
 
-// Table Column Handles Component - Three dots on top of each column
+// Table Options Menu Component - Three dots on table header, shows Copy/Delete on click
+function TableOptionsMenu({
+  editor,
+  containerRef,
+}: {
+  editor: any;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [isVisible, setIsVisible] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const container = containerRef.current;
+
+    const update = () => {
+      const table = container.querySelector("table");
+      if (!table) {
+        setPos(null);
+        return;
+      }
+
+      const containerRect = container.getBoundingClientRect();
+      const tableRect = table.getBoundingClientRect();
+
+      // Position at top-left corner of table
+      setPos({
+        top: tableRect.top - containerRect.top + 4,
+        left: tableRect.left - containerRect.left - 28,
+      });
+    };
+
+    // Table hover detection
+    const handleMouseMove = (e: MouseEvent) => {
+      const table = container.querySelector("table");
+      if (!table) {
+        if (!menuOpen) setIsVisible(false);
+        return;
+      }
+      const tableRect = table.getBoundingClientRect();
+      // Check if mouse is over table or near the left edge (for the menu)
+      const isOver =
+        e.clientX >= tableRect.left - 40 &&
+        e.clientX <= tableRect.right &&
+        e.clientY >= tableRect.top &&
+        e.clientY <= tableRect.bottom;
+
+      if (!menuOpen) {
+        setIsVisible(isOver);
+      }
+    };
+
+    update();
+    editor.on("update", update);
+    editor.on("selectionUpdate", update);
+    container.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("resize", update);
+
+    return () => {
+      editor.off("update", update);
+      editor.off("selectionUpdate", update);
+      container.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("resize", update);
+    };
+  }, [editor, containerRef, menuOpen]);
+
+  // Close menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleCopy = async () => {
+    if (!containerRef.current) return;
+    const table = containerRef.current.querySelector("table");
+    if (!table) return;
+
+    try {
+      await navigator.clipboard.writeText(table.outerHTML);
+      setCopied(true);
+      setTimeout(() => {
+        setCopied(false);
+        setMenuOpen(false);
+      }, 1000);
+    } catch (err) {
+      console.error("Failed to copy table:", err);
+    }
+  };
+
+  const handleDelete = () => {
+    editor.chain().focus().deleteTable().run();
+    setMenuOpen(false);
+  };
+
+  if (!pos) return null;
+
+  return (
+    <div
+      ref={menuRef}
+      className={`absolute z-50 transition-opacity duration-150 ${isVisible || menuOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+      style={{ top: pos.top, left: pos.left }}
+    >
+      {/* Three dots button */}
+      <button
+        type="button"
+        className="flex items-center justify-center w-6 h-6 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
+        onClick={() => setMenuOpen(!menuOpen)}
+        title="Table options"
+      >
+        <EllipsisVerticalIcon size={16} />
+      </button>
+
+      {/* Dropdown menu */}
+      {menuOpen && (
+        <div className="absolute top-0 left-7 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[120px]">
+          <button
+            type="button"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            onClick={handleCopy}
+          >
+            {copied ? (
+              <>
+                <Check size={16} className="text-green-500" />
+                <span className="text-green-600">Copied!</span>
+              </>
+            ) : (
+              <>
+                <Copy size={16} />
+                <span>Copy</span>
+              </>
+            )}
+          </button>
+          <button
+            type="button"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+            onClick={handleDelete}
+          >
+            <Trash2 size={16} />
+            <span>Delete</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// // Table Column Handles Component - Three dots on top of each column
+// function TableColumnHandles({
+//   editor,
+//   containerRef,
+//   onOpenMenu,
+// }: {
+//   editor: any;
+//   containerRef: React.RefObject<HTMLDivElement | null>;
+//   onOpenMenu: (pos: { x: number; y: number }) => void;
+// }) {
+//   const [columns, setColumns] = useState<{ left: number; width: number }[]>([]);
+//   const [tableTop, setTableTop] = useState(0);
+
+//   useEffect(() => {
+//     const update = () => {
+//       if (!containerRef.current) return;
+//       const container = containerRef.current;
+//       const table = container.querySelector("table");
+//       if (!table) {
+//         setColumns([]);
+//         return;
+//       }
+
+//       const containerRect = container.getBoundingClientRect();
+//       const tableRect = table.getBoundingClientRect();
+//       setTableTop(tableRect.top - containerRect.top);
+
+//       // Get columns from first row (header row)
+//       const firstRow = table.querySelector("tr");
+//       if (!firstRow) {
+//         setColumns([]);
+//         return;
+//       }
+
+//       const cells = firstRow.querySelectorAll("td, th");
+//       const colData: { left: number; width: number }[] = [];
+//       cells.forEach((cell) => {
+//         const rect = cell.getBoundingClientRect();
+//         colData.push({
+//           left: rect.left - containerRect.left,
+//           width: rect.width,
+//         });
+//       });
+//       setColumns(colData);
+//     };
+
+//     update();
+//     editor.on("update", update);
+//     editor.on("selectionUpdate", update);
+//     window.addEventListener("resize", update);
+
+//     return () => {
+//       editor.off("update", update);
+//       editor.off("selectionUpdate", update);
+//       window.removeEventListener("resize", update);
+//     };
+//   }, [editor, containerRef]);
+
+//   if (columns.length === 0) return null;
+
+//   return (
+//     <>
+//       {columns.map((col, idx) => (
+//         <button
+//           key={idx}
+//           type="button"
+//           className="absolute flex items-center justify-center h-[5px] rounded bg-gray-400 hover:bg-gray-200 text-gray-100 hover:text-gray-700 transition-colors"
+//           style={{
+//             left: col.left + col.width / 2 - 10,
+//             top: tableTop - 1,
+//             width: 25,
+//           }}
+//           onClick={(e) => {
+//             const table = containerRef.current?.querySelector("table");
+//             const firstRow = table?.querySelector("tr");
+//             const cells = firstRow?.querySelectorAll("td, th");
+//             const targetCell = cells?.[idx];
+//             if (targetCell) (targetCell as HTMLElement).click();
+//             onOpenMenu({ x: e.clientX, y: e.clientY });
+//           }}
+//           title="Column options"
+//         >
+//           {/* <EllipsisIcon size={14} /> */}
+//         </button>
+//       ))}
+//     </>
+//   );
+// }
+
+// // Table Row Handles Component
+// function TableRowHandles({
+//   editor,
+//   containerRef,
+//   onOpenMenu,
+// }: {
+//   editor: any;
+//   containerRef: React.RefObject<HTMLDivElement | null>;
+//   onOpenMenu: (pos: { x: number; y: number }) => void;
+// }) {
+//   const [rows, setRows] = useState<{ top: number; height: number }[]>([]);
+//   const [tableLeft, setTableLeft] = useState(0);
+
+//   useEffect(() => {
+//     const update = () => {
+//       if (!containerRef.current) return;
+//       const container = containerRef.current;
+//       const table = container.querySelector("table");
+//       if (!table) {
+//         setRows([]);
+//         return;
+//       }
+
+//       const containerRect = container.getBoundingClientRect();
+//       const tableRect = table.getBoundingClientRect();
+//       setTableLeft(tableRect.left - containerRect.left);
+
+//       const rowEls = table.querySelectorAll("tr");
+//       const rowData: { top: number; height: number }[] = [];
+//       rowEls.forEach((row) => {
+//         const rect = row.getBoundingClientRect();
+//         rowData.push({
+//           top: rect.top - containerRect.top,
+//           height: rect.height,
+//         });
+//       });
+//       setRows(rowData);
+//     };
+
+//     update();
+//     editor.on("update", update);
+//     editor.on("selectionUpdate", update);
+//     window.addEventListener("resize", update);
+
+//     return () => {
+//       editor.off("update", update);
+//       editor.off("selectionUpdate", update);
+//       window.removeEventListener("resize", update);
+//     };
+//   }, [editor, containerRef]);
+
+//   if (rows.length === 0) return null;
+
+//   return (
+//     <>
+//       {rows.map((row, idx) => (
+//         <button
+//           key={idx}
+//           type="button"
+//           className="absolute flex items-center justify-center w-[6px]  rounded bg-gray-400 hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
+//           style={{
+//             left: tableLeft - 3,
+//             top: row.top + 14,
+//             height: 24,
+//           }}
+//           onClick={(e) => {
+//             const table = containerRef.current?.querySelector("table");
+//             const targetRow = table?.querySelectorAll("tr")[idx];
+//             const firstCell = targetRow?.querySelector("td, th");
+//             if (firstCell) (firstCell as HTMLElement).click();
+//             onOpenMenu({ x: e.clientX, y: e.clientY });
+//           }}
+//           title="Row options"
+//         >
+//           {/* <EllipsisVerticalIcon size={14} /> */}
+//         </button>
+//       ))}
+//     </>
+//   );
+// }
+
+// Table Column Handles Component - Shows only for hovered/active column
 function TableColumnHandles({
   editor,
   containerRef,
@@ -1226,11 +1609,13 @@ function TableColumnHandles({
 }) {
   const [columns, setColumns] = useState<{ left: number; width: number }[]>([]);
   const [tableTop, setTableTop] = useState(0);
+  const [activeColIndex, setActiveColIndex] = useState<number | null>(null);
 
   useEffect(() => {
+    if (!containerRef.current) return;
+    const container = containerRef.current;
+
     const update = () => {
-      if (!containerRef.current) return;
-      const container = containerRef.current;
       const table = container.querySelector("table");
       if (!table) {
         setColumns([]);
@@ -1241,7 +1626,6 @@ function TableColumnHandles({
       const tableRect = table.getBoundingClientRect();
       setTableTop(tableRect.top - containerRect.top);
 
-      // Get columns from first row (header row)
       const firstRow = table.querySelector("tr");
       if (!firstRow) {
         setColumns([]);
@@ -1260,50 +1644,87 @@ function TableColumnHandles({
       setColumns(colData);
     };
 
+    // Detect which column is being hovered
+    const handleMouseMove = (e: MouseEvent) => {
+      const table = container.querySelector("table");
+      if (!table) {
+        setActiveColIndex(null);
+        return;
+      }
+
+      const tableRect = table.getBoundingClientRect();
+      
+      // Check if mouse is over the table
+      if (
+        e.clientX < tableRect.left ||
+        e.clientX > tableRect.right ||
+        e.clientY < tableRect.top ||
+        e.clientY > tableRect.bottom
+      ) {
+        setActiveColIndex(null);
+        return;
+      }
+
+      // Find which column the mouse is over
+      const firstRow = table.querySelector("tr");
+      if (!firstRow) return;
+
+      const cells = firstRow.querySelectorAll("td, th");
+      let foundIndex: number | null = null;
+
+      cells.forEach((cell, idx) => {
+        const cellRect = cell.getBoundingClientRect();
+        if (e.clientX >= cellRect.left && e.clientX <= cellRect.right) {
+          foundIndex = idx;
+        }
+      });
+
+      setActiveColIndex(foundIndex);
+    };
+
     update();
     editor.on("update", update);
     editor.on("selectionUpdate", update);
+    container.addEventListener("mousemove", handleMouseMove);
+    container.addEventListener("mouseleave", () => setActiveColIndex(null));
     window.addEventListener("resize", update);
 
     return () => {
       editor.off("update", update);
       editor.off("selectionUpdate", update);
+      container.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("resize", update);
     };
   }, [editor, containerRef]);
 
-  if (columns.length === 0) return null;
+  if (columns.length === 0 || activeColIndex === null) return null;
+
+  const col = columns[activeColIndex];
+  if (!col) return null;
 
   return (
-    <>
-      {columns.map((col, idx) => (
-        <button
-          key={idx}
-          type="button"
-          className="absolute flex items-center justify-center h-5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
-          style={{
-            left: col.left + col.width / 2 - 10,
-            top: tableTop + 4,
-            width: 20,
-          }}
-          onClick={(e) => {
-            const table = containerRef.current?.querySelector("table");
-            const firstRow = table?.querySelector("tr");
-            const cells = firstRow?.querySelectorAll("td, th");
-            const targetCell = cells?.[idx];
-            if (targetCell) (targetCell as HTMLElement).click();
-            onOpenMenu({ x: e.clientX, y: e.clientY });
-          }}
-          title="Column options"
-        >
-          <MoreHorizontal size={14} />
-        </button>
-      ))}
-    </>
+    <button
+      type="button"
+      className="absolute flex  cursor-pointer items-center justify-center h-[4px] rounded bg-gray-400 hover:bg-blue-500 transition-colors"
+      style={{
+        left: col.left + col.width / 2 - 12,
+        top: tableTop - 0,
+        width: 25,
+      }}
+      onClick={(e) => {
+        const table = containerRef.current?.querySelector("table");
+        const firstRow = table?.querySelector("tr");
+        const cells = firstRow?.querySelectorAll("td, th");
+        const targetCell = cells?.[activeColIndex];
+        if (targetCell) (targetCell as HTMLElement).click();
+        onOpenMenu({ x: e.clientX, y: e.clientY });
+      }}
+      title="Column options"
+    />
   );
 }
 
-// Table Row Handles Component
+// Table Row Handles Component - Shows only for hovered/active row
 function TableRowHandles({
   editor,
   containerRef,
@@ -1315,11 +1736,13 @@ function TableRowHandles({
 }) {
   const [rows, setRows] = useState<{ top: number; height: number }[]>([]);
   const [tableLeft, setTableLeft] = useState(0);
+  const [activeRowIndex, setActiveRowIndex] = useState<number | null>(null);
 
   useEffect(() => {
+    if (!containerRef.current) return;
+    const container = containerRef.current;
+
     const update = () => {
-      if (!containerRef.current) return;
-      const container = containerRef.current;
       const table = container.querySelector("table");
       if (!table) {
         setRows([]);
@@ -1342,196 +1765,232 @@ function TableRowHandles({
       setRows(rowData);
     };
 
+    // Detect which row is being hovered
+    const handleMouseMove = (e: MouseEvent) => {
+      const table = container.querySelector("table");
+      if (!table) {
+        setActiveRowIndex(null);
+        return;
+      }
+
+      const tableRect = table.getBoundingClientRect();
+
+      // Check if mouse is over the table
+      if (
+        e.clientX < tableRect.left ||
+        e.clientX > tableRect.right ||
+        e.clientY < tableRect.top ||
+        e.clientY > tableRect.bottom
+      ) {
+        setActiveRowIndex(null);
+        return;
+      }
+
+      // Find which row the mouse is over
+      const rowEls = table.querySelectorAll("tr");
+      let foundIndex: number | null = null;
+
+      rowEls.forEach((row, idx) => {
+        const rowRect = row.getBoundingClientRect();
+        if (e.clientY >= rowRect.top && e.clientY <= rowRect.bottom) {
+          foundIndex = idx;
+        }
+      });
+
+      setActiveRowIndex(foundIndex);
+    };
+
     update();
     editor.on("update", update);
     editor.on("selectionUpdate", update);
+    container.addEventListener("mousemove", handleMouseMove);
+    container.addEventListener("mouseleave", () => setActiveRowIndex(null));
     window.addEventListener("resize", update);
 
     return () => {
       editor.off("update", update);
       editor.off("selectionUpdate", update);
+      container.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("resize", update);
     };
   }, [editor, containerRef]);
 
-  if (rows.length === 0) return null;
+  if (rows.length === 0 || activeRowIndex === null) return null;
+
+  const row = rows[activeRowIndex];
+  if (!row) return null;
 
   return (
-    <>
-      {rows.map((row, idx) => (
-        <button
-          key={idx}
-          type="button"
-          className="absolute flex items-center justify-center w-5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
-          style={{
-            left: tableLeft - 24,
-            top: row.top,
-            height: row.height,
-          }}
-          onClick={(e) => {
-            const table = containerRef.current?.querySelector("table");
-            const targetRow = table?.querySelectorAll("tr")[idx];
-            const firstCell = targetRow?.querySelector("td, th");
-            if (firstCell) (firstCell as HTMLElement).click();
-            onOpenMenu({ x: e.clientX, y: e.clientY });
-          }}
-          title="Row options"
-        >
-          <GripVertical size={14} />
-        </button>
-      ))}
-    </>
+    <button
+      type="button"
+      className="absolute cursor-pointer flex items-center justify-center w-[4px] rounded bg-gray-400 hover:bg-blue-500 transition-colors"
+      style={{
+        left: tableLeft - 0,
+        top: row.top + row.height / 2 - 12,
+        height: 24,
+      }}
+      onClick={(e) => {
+        const table = containerRef.current?.querySelector("table");
+        const targetRow = table?.querySelectorAll("tr")[activeRowIndex];
+        const firstCell = targetRow?.querySelector("td, th");
+        if (firstCell) (firstCell as HTMLElement).click();
+        onOpenMenu({ x: e.clientX, y: e.clientY });
+      }}
+      title="Row options"
+    />
   );
 }
 
 // Add Column Button Component - Full height vertical bar on right
-function AddColumnButton({
-  editor,
-  containerRef,
-}: {
-  editor: any;
-  containerRef: React.RefObject<HTMLDivElement | null>;
-}) {
-  const [pos, setPos] = useState<{
-    right: number;
-    top: number;
-    height: number;
-  } | null>(null);
-  const [isHovered, setIsHovered] = useState(false);
+// function AddColumnButton({
+//   editor,
+//   containerRef,
+// }: {
+//   editor: any;
+//   containerRef: React.RefObject<HTMLDivElement | null>;
+// }) {
+//   const [pos, setPos] = useState<{
+//     right: number;
+//     top: number;
+//     height: number;
+//   } | null>(null);
+//   const [isHovered, setIsHovered] = useState(false);
 
-  useEffect(() => {
-    const update = () => {
-      if (!containerRef.current) return;
-      const container = containerRef.current;
-      const table = container.querySelector("table");
-      if (!table) {
-        setPos(null);
-        return;
-      }
+//   useEffect(() => {
+//     const update = () => {
+//       if (!containerRef.current) return;
+//       const container = containerRef.current;
+//       const table = container.querySelector("table");
+//       if (!table) {
+//         setPos(null);
+//         return;
+//       }
 
-      const containerRect = container.getBoundingClientRect();
-      const tableRect = table.getBoundingClientRect();
+//       const containerRect = container.getBoundingClientRect();
+//       const tableRect = table.getBoundingClientRect();
 
-      setPos({
-        right: tableRect.right - containerRect.left,
-        top: tableRect.top - containerRect.top,
-        height: tableRect.height,
-      });
-    };
+//       setPos({
+//         right: tableRect.right - containerRect.left,
+//         top: tableRect.top - containerRect.top,
+//         height: tableRect.height,
+//       });
+//     };
 
-    update();
-    editor.on("update", update);
-    editor.on("selectionUpdate", update);
-    window.addEventListener("resize", update);
+//     update();
+//     editor.on("update", update);
+//     editor.on("selectionUpdate", update);
+//     window.addEventListener("resize", update);
 
-    return () => {
-      editor.off("update", update);
-      editor.off("selectionUpdate", update);
-      window.removeEventListener("resize", update);
-    };
-  }, [editor, containerRef]);
+//     return () => {
+//       editor.off("update", update);
+//       editor.off("selectionUpdate", update);
+//       window.removeEventListener("resize", update);
+//     };
+//   }, [editor, containerRef]);
 
-  if (!pos) return null;
+//   if (!pos) return null;
 
-  return (
-    <div
-      className="absolute flex items-center transition-opacity"
-      style={{
-        left: pos.right + 4,
-        top: pos.top,
-        height: pos.height,
-      }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      {/* Vertical line */}
-      <div
-        className={`w-[16px] cursor-pointer flex items-center justify-center h-full rounded-sm transition-colors ${isHovered ? "bg-gray-200" : "bg-gray-300"}`}
-      >
-        <button
-          className="cursor-pointer"
-          onClick={() => editor.chain().focus().addColumnAfter().run()}
-          title="Add column"
-        >
-          <Plus size={14} />
-        </button>
-      </div>
-    </div>
-  );
-}
+//   return (
+//     <div
+//       className="absolute flex items-center transition-opacity"
+//       style={{
+//         left: pos.right + 4,
+//         top: pos.top,
+//         height: pos.height,
+//       }}
+//       onMouseEnter={() => setIsHovered(true)}
+//       onMouseLeave={() => setIsHovered(false)}
+//     >
+//       {/* Vertical line */}
+//       <div
+//        onClick={() => editor.chain().focus().addColumnAfter().run()}
+//         className={`w-[16px] cursor-pointer flex items-center justify-center h-full rounded-sm transition-colors ${isHovered ? "bg-gray-200" : "bg-gray-300"}`}
+//       >
+//         <button
+//           className="cursor-pointer"
+         
+//           title="Add column"
+//         >
+//           <Plus size={14} />
+//         </button>
+//       </div>
+//     </div>
+//   );
+// }
 
-// Add Row Button Component - Full width horizontal bar on bottom
-function AddRowButton({
-  editor,
-  containerRef,
-}: {
-  editor: any;
-  containerRef: React.RefObject<HTMLDivElement | null>;
-}) {
-  const [pos, setPos] = useState<{
-    left: number;
-    bottom: number;
-    width: number;
-  } | null>(null);
-  const [isHovered, setIsHovered] = useState(false);
+// // Add Row Button Component - Full width horizontal bar on bottom
+// function AddRowButton({
+//   editor,
+//   containerRef,
+// }: {
+//   editor: any;
+//   containerRef: React.RefObject<HTMLDivElement | null>;
+// }) {
+//   const [pos, setPos] = useState<{
+//     left: number;
+//     bottom: number;
+//     width: number;
+//   } | null>(null);
+//   const [isHovered, setIsHovered] = useState(false);
 
-  useEffect(() => {
-    const update = () => {
-      if (!containerRef.current) return;
-      const container = containerRef.current;
-      const table = container.querySelector("table");
-      if (!table) {
-        setPos(null);
-        return;
-      }
+//   useEffect(() => {
+//     const update = () => {
+//       if (!containerRef.current) return;
+//       const container = containerRef.current;
+//       const table = container.querySelector("table");
+//       if (!table) {
+//         setPos(null);
+//         return;
+//       }
 
-      const containerRect = container.getBoundingClientRect();
-      const tableRect = table.getBoundingClientRect();
+//       const containerRect = container.getBoundingClientRect();
+//       const tableRect = table.getBoundingClientRect();
 
-      setPos({
-        left: tableRect.left - containerRect.left,
-        bottom: tableRect.bottom - containerRect.top,
-        width: tableRect.width,
-      });
-    };
+//       setPos({
+//         left: tableRect.left - containerRect.left,
+//         bottom: tableRect.bottom - containerRect.top,
+//         width: tableRect.width,
+//       });
+//     };
 
-    update();
-    editor.on("update", update);
-    editor.on("selectionUpdate", update);
-    window.addEventListener("resize", update);
+//     update();
+//     editor.on("update", update);
+//     editor.on("selectionUpdate", update);
+//     window.addEventListener("resize", update);
 
-    return () => {
-      editor.off("update", update);
-      editor.off("selectionUpdate", update);
-      window.removeEventListener("resize", update);
-    };
-  }, [editor, containerRef]);
+//     return () => {
+//       editor.off("update", update);
+//       editor.off("selectionUpdate", update);
+//       window.removeEventListener("resize", update);
+//     };
+//   }, [editor, containerRef]);
 
-  if (!pos) return null;
+//   if (!pos) return null;
 
-  return (
-    <div
-      className="absolute flex flex-col items-center transition-opacity"
-      style={{
-        left: pos.left,
-        top: pos.bottom + 4,
-        width: pos.width,
-      }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      {/* Horizontal line */}
-      <div
-        className={`h-[16px] cursor-pointer flex items-center justify-center w-full rounded-sm transition-colors ${isHovered ? "bg-gray-200" : "bg-gray-300"}`}
-      >
-        <button
-          className="cursor-pointer"
-          onClick={() => editor.chain().focus().addRowAfter().run()}
-          title="Add row"
-        >
-          <Plus size={14} />
-        </button>
-      </div>
-    </div>
-  );
-}
+//   return (
+//     <div
+//       className="absolute flex flex-col items-center transition-opacity"
+//       style={{
+//         left: pos.left,
+//         top: pos.bottom + 4,
+//         width: pos.width,
+//       }}
+//       onMouseEnter={() => setIsHovered(true)}
+//       onMouseLeave={() => setIsHovered(false)}
+//     >
+//       {/* Horizontal line */}
+//       <div
+//       onClick={() => editor.chain().focus().addRowAfter().run()}
+//         className={`h-[16px] cursor-pointer flex items-center justify-center w-full rounded-sm transition-colors ${isHovered ? "bg-gray-200" : "bg-gray-300"}`}
+//       >
+//         <button
+//           className="cursor-pointer"
+          
+//           title="Add row"
+//         >
+//           <Plus size={14} />
+//         </button>
+//       </div>
+//     </div>
+//   );
+// }
